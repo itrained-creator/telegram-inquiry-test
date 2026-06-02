@@ -1,5 +1,6 @@
 const path = require("path");
 const crypto = require("crypto");
+const fs = require("fs");
 const express = require("express");
 require("dotenv").config();
 
@@ -15,6 +16,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const chatSessions = new Map();
 const telegramMessageToSession = new Map();
+const chatStoreFile = process.env.CHAT_STORE_FILE || path.join(__dirname, "chat-sessions.json");
 let telegramUpdateOffset = 0;
 let isPollingTelegram = false;
 
@@ -33,6 +35,39 @@ function createChatMessage({ sender, text }) {
     text,
     createdAt: new Date().toISOString(),
   };
+}
+
+function loadChatSessions() {
+  if (!fs.existsSync(chatStoreFile)) {
+    return;
+  }
+
+  try {
+    const savedSessions = JSON.parse(fs.readFileSync(chatStoreFile, "utf8"));
+
+    for (const session of savedSessions) {
+      chatSessions.set(session.id, session);
+
+      for (const message of session.messages || []) {
+        if (message.telegramMessageId) {
+          telegramMessageToSession.set(message.telegramMessageId, session.id);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Chat session load failed:", error.message);
+  }
+}
+
+function saveChatSessions() {
+  try {
+    fs.writeFileSync(
+      chatStoreFile,
+      JSON.stringify(Array.from(chatSessions.values()), null, 2)
+    );
+  } catch (error) {
+    console.error("Chat session save failed:", error.message);
+  }
 }
 
 function buildTelegramMessage({ storeName, sessionId, businessName, message, isNewChat }) {
@@ -117,6 +152,23 @@ async function forwardBuyerMessageToTelegram({ session, message, isNewChat }) {
   }
 }
 
+function findSessionIdFromTelegramReply(telegramMessage) {
+  const replyToMessageId =
+    telegramMessage.reply_to_message && telegramMessage.reply_to_message.message_id;
+  const mappedSessionId = telegramMessageToSession.get(replyToMessageId);
+
+  if (mappedSessionId) {
+    return mappedSessionId;
+  }
+
+  const repliedText = String(
+    telegramMessage.reply_to_message && telegramMessage.reply_to_message.text
+  );
+  const sessionMatch = repliedText.match(/대화ID:\s*([0-9a-f-]+)/i);
+
+  return sessionMatch && sessionMatch[1];
+}
+
 async function handleSellerTelegramMessage(telegramMessage) {
   const store = getStoreConfig();
   const sellerChatId = String(store.sellerChatId || "");
@@ -132,9 +184,7 @@ async function handleSellerTelegramMessage(telegramMessage) {
     return;
   }
 
-  const replyToMessageId =
-    telegramMessage.reply_to_message && telegramMessage.reply_to_message.message_id;
-  let sessionId = telegramMessageToSession.get(replyToMessageId);
+  let sessionId = findSessionIdFromTelegramReply(telegramMessage);
   let replyText = text;
 
   // 보조 수단: /reply 대화ID 답장내용 형식도 지원합니다.
@@ -161,6 +211,7 @@ async function handleSellerTelegramMessage(telegramMessage) {
       text: replyText,
     })
   );
+  saveChatSessions();
 }
 
 async function pollTelegramReplies() {
@@ -240,6 +291,7 @@ async function handleStartChat(req, res) {
       message: buyerMessage,
       isNewChat: true,
     });
+    saveChatSessions();
 
     return res.json({
       ok: true,
@@ -277,6 +329,7 @@ app.post("/api/chat/:sessionId/messages", async (req, res) => {
       message: buyerMessage,
       isNewChat: false,
     });
+    saveChatSessions();
 
     return res.json({ ok: true, messages: getPublicMessages(session) });
   } catch (error) {
@@ -307,6 +360,7 @@ app.post("/api/inquiry", async (req, res) => {
 
 app.listen(port, host, () => {
   console.log(`Inquiry test app is running at http://localhost:${port}`);
+  loadChatSessions();
   initializeTelegramOffset().then(() => {
     pollTelegramReplies();
     setInterval(pollTelegramReplies, 3000);
