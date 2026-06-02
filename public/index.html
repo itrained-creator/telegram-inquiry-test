@@ -158,9 +158,16 @@
       const sendButton = document.getElementById("sendButton");
       const statusEl = document.getElementById("status");
 
-      let sessionId = sessionStorage.getItem("chatSessionId");
+      const urlSessionId = new URLSearchParams(window.location.search).get(
+        "sessionId"
+      );
+      let sessionId = urlSessionId || sessionStorage.getItem("chatSessionId");
       let knownMessageIds = new Set();
       let pollingTimer = null;
+
+      if (urlSessionId) {
+        sessionStorage.setItem("chatSessionId", urlSessionId);
+      }
 
       function setStatus(message) {
         statusEl.textContent = message;
@@ -212,6 +219,10 @@
           setStatus("");
         } catch (error) {
           setStatus(`답장 확인 실패: ${error.message}`);
+
+          if (error.message.includes("채팅방을 찾을 수 없습니다")) {
+            sessionStorage.removeItem("chatSessionId");
+          }
         }
       }
 
