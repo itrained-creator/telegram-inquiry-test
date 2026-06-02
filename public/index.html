@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A상점 문의하기</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+        background: #f6f7f9;
+        color: #222;
+      }
+
+      main {
+        width: min(92vw, 520px);
+        margin: 48px auto;
+        padding: 28px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+      }
+
+      h1 {
+        margin: 0 0 24px;
+        font-size: 28px;
+      }
+
+      label {
+        display: block;
+        margin: 16px 0 8px;
+        font-weight: 700;
+      }
+
+      input,
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #cfd5df;
+        border-radius: 6px;
+        font-size: 16px;
+      }
+
+      textarea {
+        min-height: 140px;
+        resize: vertical;
+      }
+
+      button {
+        width: 100%;
+        margin-top: 20px;
+        padding: 13px 16px;
+        border: 0;
+        border-radius: 6px;
+        background: #1f6feb;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        background: #8aaee8;
+        cursor: not-allowed;
+      }
+
+      #status {
+        min-height: 24px;
+        margin-top: 16px;
+        font-weight: 700;
+      }
+
+      .success {
+        color: #0a7a35;
+      }
+
+      .error {
+        color: #b42318;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>A상점 문의하기</h1>
+
+      <form id="inquiryForm">
+        <label for="businessName">업소명</label>
+        <input id="businessName" name="businessName" value="빙그레안마" />
+
+        <label for="message">문의 내용</label>
+        <textarea id="message" name="message">01:00 예약 가능한가요?</textarea>
+
+        <button id="submitButton" type="submit">문의 보내기</button>
+      </form>
+
+      <div id="status" aria-live="polite"></div>
+    </main>
+
+    <script>
+      const form = document.getElementById("inquiryForm");
+      const statusEl = document.getElementById("status");
+      const submitButton = document.getElementById("submitButton");
+
+      function showStatus(message, type) {
+        statusEl.textContent = message;
+        statusEl.className = type;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const businessName = form.businessName.value.trim();
+        const message = form.message.value.trim();
+
+        // 빈 입력값은 서버로 보내기 전에 화면에서 먼저 막습니다.
+        if (!businessName || !message) {
+          showStatus("업소명과 문의 내용을 모두 입력해 주세요.", "error");
+          return;
+        }
+
+        submitButton.disabled = true;
+        showStatus("문의 전송 중입니다...", "");
+
+        try {
+          const response = await fetch("/api/inquiry", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ businessName, message }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || "문의 전송에 실패했습니다.");
+          }
+
+          form.reset();
+          showStatus("문의가 텔레그램으로 전송되었습니다.", "success");
+        } catch (error) {
+          showStatus(`전송 실패: ${error.message}`, "error");
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
