@@ -169,6 +169,15 @@ function findSessionIdFromTelegramReply(telegramMessage) {
   return sessionMatch && sessionMatch[1];
 }
 
+function findBusinessNameFromTelegramReply(telegramMessage) {
+  const repliedText = String(
+    telegramMessage.reply_to_message && telegramMessage.reply_to_message.text
+  );
+  const businessNameMatch = repliedText.match(/업소명:\s*(.+)/);
+
+  return businessNameMatch ? businessNameMatch[1].trim() : "빙그레안마";
+}
+
 async function handleSellerTelegramMessage(telegramMessage) {
   const store = getStoreConfig();
   const sellerChatId = String(store.sellerChatId || "");
@@ -194,7 +203,17 @@ async function handleSellerTelegramMessage(telegramMessage) {
     replyText = commandMatch[2].trim();
   }
 
-  const session = chatSessions.get(sessionId);
+  let session = chatSessions.get(sessionId);
+
+  if (!session && sessionId) {
+    session = {
+      id: sessionId,
+      businessName: findBusinessNameFromTelegramReply(telegramMessage),
+      messages: [],
+      createdAt: new Date().toISOString(),
+    };
+    chatSessions.set(session.id, session);
+  }
 
   if (!session || !replyText) {
     await sendTelegramMessage({
