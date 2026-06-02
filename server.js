@@ -140,6 +140,21 @@ function getLatestChatSession() {
   })[0];
 }
 
+function createRecoveredSession(sessionId) {
+  const session = {
+    id: sessionId,
+    businessName: "빙그레안마",
+    messages: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  chatSessions.set(session.id, session);
+  saveChatSessions();
+
+  return session;
+}
+
 async function forwardBuyerMessageToTelegram({ session, message, isNewChat }) {
   const store = getStoreConfig();
   const telegramText = buildTelegramMessage({
@@ -347,12 +362,9 @@ async function handleStartChat(req, res) {
 app.post("/api/chat/start", handleStartChat);
 
 app.post("/api/chat/:sessionId/messages", async (req, res) => {
-  const session = chatSessions.get(req.params.sessionId);
+  const session =
+    chatSessions.get(req.params.sessionId) || createRecoveredSession(req.params.sessionId);
   const text = String(req.body.message || "").trim();
-
-  if (!session) {
-    return res.status(404).json({ ok: false, error: "채팅방을 찾을 수 없습니다." });
-  }
 
   if (!text) {
     return res.status(400).json({ ok: false, error: "메시지를 입력해 주세요." });
@@ -379,11 +391,8 @@ app.post("/api/chat/:sessionId/messages", async (req, res) => {
 });
 
 app.get("/api/chat/:sessionId/messages", (req, res) => {
-  const session = chatSessions.get(req.params.sessionId);
-
-  if (!session) {
-    return res.status(404).json({ ok: false, error: "채팅방을 찾을 수 없습니다." });
-  }
+  const session =
+    chatSessions.get(req.params.sessionId) || createRecoveredSession(req.params.sessionId);
 
   return res.json({
     ok: true,
