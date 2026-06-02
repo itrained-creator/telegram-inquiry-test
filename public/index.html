@@ -3,32 +3,41 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>A상점 문의하기</title>
+    <title>A상점 채팅 문의</title>
     <style>
       body {
         margin: 0;
         font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-        background: #f6f7f9;
-        color: #222;
+        background: #f4f6f8;
+        color: #202124;
       }
 
       main {
-        width: min(92vw, 520px);
-        margin: 48px auto;
-        padding: 28px;
+        display: grid;
+        grid-template-rows: auto 1fr auto auto;
+        width: min(94vw, 560px);
+        height: min(92vh, 760px);
+        margin: 28px auto;
         background: #fff;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #dde3ea;
         border-radius: 8px;
+        overflow: hidden;
+      }
+
+      header {
+        padding: 18px 20px;
+        border-bottom: 1px solid #e7ecf2;
+        background: #fff;
       }
 
       h1 {
-        margin: 0 0 24px;
-        font-size: 28px;
+        margin: 0 0 12px;
+        font-size: 24px;
       }
 
       label {
         display: block;
-        margin: 16px 0 8px;
+        margin-bottom: 6px;
         font-weight: 700;
       }
 
@@ -36,21 +45,71 @@
       textarea {
         box-sizing: border-box;
         width: 100%;
-        padding: 12px;
-        border: 1px solid #cfd5df;
+        border: 1px solid #cfd7e2;
         border-radius: 6px;
         font-size: 16px;
       }
 
+      input {
+        padding: 10px 12px;
+      }
+
+      #messages {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 18px;
+        overflow-y: auto;
+        background: #f8fafc;
+      }
+
+      .message {
+        max-width: 82%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      .buyer {
+        align-self: flex-end;
+        background: #1f6feb;
+        color: #fff;
+      }
+
+      .seller {
+        align-self: flex-start;
+        background: #e9eef5;
+      }
+
+      .system {
+        align-self: center;
+        max-width: 92%;
+        background: transparent;
+        color: #667085;
+        font-size: 14px;
+        text-align: center;
+      }
+
+      #chatForm {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        padding: 14px;
+        border-top: 1px solid #e7ecf2;
+      }
+
       textarea {
-        min-height: 140px;
+        min-height: 48px;
+        max-height: 140px;
+        padding: 12px;
         resize: vertical;
       }
 
       button {
-        width: 100%;
-        margin-top: 20px;
-        padding: 13px 16px;
+        align-self: end;
+        min-width: 88px;
+        height: 48px;
         border: 0;
         border-radius: 6px;
         background: #1f6feb;
@@ -61,90 +120,162 @@
       }
 
       button:disabled {
-        background: #8aaee8;
+        background: #91b2e8;
         cursor: not-allowed;
       }
 
       #status {
-        min-height: 24px;
-        margin-top: 16px;
-        font-weight: 700;
-      }
-
-      .success {
-        color: #0a7a35;
-      }
-
-      .error {
+        min-height: 22px;
+        padding: 0 16px 12px;
         color: #b42318;
+        font-weight: 700;
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>A상점 문의하기</h1>
-
-      <form id="inquiryForm">
+      <header>
+        <h1>A상점 채팅 문의</h1>
         <label for="businessName">업소명</label>
-        <input id="businessName" name="businessName" value="빙그레안마" />
+        <input id="businessName" value="빙그레안마" />
+      </header>
 
-        <label for="message">문의 내용</label>
-        <textarea id="message" name="message">01:00 예약 가능한가요?</textarea>
+      <section id="messages" aria-live="polite"></section>
 
-        <button id="submitButton" type="submit">문의 보내기</button>
+      <form id="chatForm">
+        <textarea id="messageInput">01:00 예약 가능한가요?</textarea>
+        <button id="sendButton" type="submit">전송</button>
       </form>
 
-      <div id="status" aria-live="polite"></div>
+      <div id="status"></div>
     </main>
 
     <script>
-      const form = document.getElementById("inquiryForm");
+      const businessNameEl = document.getElementById("businessName");
+      const messagesEl = document.getElementById("messages");
+      const form = document.getElementById("chatForm");
+      const messageInput = document.getElementById("messageInput");
+      const sendButton = document.getElementById("sendButton");
       const statusEl = document.getElementById("status");
-      const submitButton = document.getElementById("submitButton");
 
-      function showStatus(message, type) {
+      let sessionId = sessionStorage.getItem("chatSessionId");
+      let knownMessageIds = new Set();
+      let pollingTimer = null;
+
+      function setStatus(message) {
         statusEl.textContent = message;
-        statusEl.className = type;
+      }
+
+      function addSystemMessage(text) {
+        const item = document.createElement("div");
+        item.className = "message system";
+        item.textContent = text;
+        messagesEl.appendChild(item);
+      }
+
+      function renderMessages(messages) {
+        for (const message of messages) {
+          if (knownMessageIds.has(message.id)) {
+            continue;
+          }
+
+          knownMessageIds.add(message.id);
+
+          const item = document.createElement("div");
+          item.className = `message ${message.sender}`;
+          item.textContent = message.text;
+          messagesEl.appendChild(item);
+        }
+
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      async function requestJson(url, options) {
+        const response = await fetch(url, options);
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "요청에 실패했습니다.");
+        }
+
+        return data;
+      }
+
+      async function pollMessages() {
+        if (!sessionId) {
+          return;
+        }
+
+        try {
+          const data = await requestJson(`/api/chat/${sessionId}/messages`);
+          renderMessages(data.messages);
+          setStatus("");
+        } catch (error) {
+          setStatus(`답장 확인 실패: ${error.message}`);
+        }
+      }
+
+      function startPolling() {
+        if (pollingTimer) {
+          return;
+        }
+
+        pollingTimer = setInterval(pollMessages, 2500);
       }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const businessName = form.businessName.value.trim();
-        const message = form.message.value.trim();
+        const businessName = businessNameEl.value.trim();
+        const message = messageInput.value.trim();
 
-        // 빈 입력값은 서버로 보내기 전에 화면에서 먼저 막습니다.
         if (!businessName || !message) {
-          showStatus("업소명과 문의 내용을 모두 입력해 주세요.", "error");
+          setStatus("업소명과 메시지를 모두 입력해 주세요.");
           return;
         }
 
-        submitButton.disabled = true;
-        showStatus("문의 전송 중입니다...", "");
+        sendButton.disabled = true;
+        setStatus("");
 
         try {
-          const response = await fetch("/api/inquiry", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ businessName, message }),
-          });
+          const data = sessionId
+            ? await requestJson(`/api/chat/${sessionId}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message }),
+              })
+            : await requestJson("/api/chat/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ businessName, message }),
+              });
 
-          const data = await response.json();
-
-          if (!response.ok || !data.ok) {
-            throw new Error(data.error || "문의 전송에 실패했습니다.");
+          if (!sessionId) {
+            sessionId = data.sessionId;
+            sessionStorage.setItem("chatSessionId", sessionId);
+            businessNameEl.disabled = true;
+            addSystemMessage("상점주가 텔레그램에서 답장하면 이 채팅창에 표시됩니다.");
+            startPolling();
           }
 
-          form.reset();
-          showStatus("문의가 텔레그램으로 전송되었습니다.", "success");
+          renderMessages(data.messages);
+          messageInput.value = "";
+          messageInput.focus();
         } catch (error) {
-          showStatus(`전송 실패: ${error.message}`, "error");
+          setStatus(`전송 실패: ${error.message}`);
         } finally {
-          submitButton.disabled = false;
+          sendButton.disabled = false;
         }
       });
+
+      if (sessionId) {
+        businessNameEl.disabled = true;
+        addSystemMessage("이전 채팅을 이어서 표시합니다.");
+        pollMessages();
+        startPolling();
+      } else {
+        addSystemMessage("첫 메시지를 보내면 상점주 텔레그램으로 연결됩니다.");
+      }
     </script>
   </body>
 </html>
