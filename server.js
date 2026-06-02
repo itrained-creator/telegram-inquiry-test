@@ -129,6 +129,17 @@ function getPublicMessages(session) {
   }));
 }
 
+function getLatestChatSession() {
+  const sessions = Array.from(chatSessions.values());
+
+  return sessions.sort((a, b) => {
+    const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+    const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+
+    return bTime - aTime;
+  })[0];
+}
+
 async function forwardBuyerMessageToTelegram({ session, message, isNewChat }) {
   const store = getStoreConfig();
   const telegramText = buildTelegramMessage({
@@ -205,6 +216,12 @@ async function handleSellerTelegramMessage(telegramMessage) {
 
   let session = chatSessions.get(sessionId);
 
+  // 테스트용 단일 상점에서는 답장 원본 매칭이 실패해도 최근 채팅으로 연결합니다.
+  if (!session && !sessionId && !commandMatch) {
+    session = getLatestChatSession();
+    sessionId = session && session.id;
+  }
+
   if (!session && sessionId) {
     session = {
       id: sessionId,
@@ -230,6 +247,7 @@ async function handleSellerTelegramMessage(telegramMessage) {
       text: replyText,
     })
   );
+  session.updatedAt = new Date().toISOString();
   saveChatSessions();
 }
 
@@ -298,6 +316,7 @@ async function handleStartChat(req, res) {
     businessName,
     messages: [],
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
   const buyerMessage = createChatMessage({ sender: "buyer", text });
 
@@ -341,6 +360,7 @@ app.post("/api/chat/:sessionId/messages", async (req, res) => {
 
   const buyerMessage = createChatMessage({ sender: "buyer", text });
   session.messages.push(buyerMessage);
+  session.updatedAt = new Date().toISOString();
 
   try {
     await forwardBuyerMessageToTelegram({
