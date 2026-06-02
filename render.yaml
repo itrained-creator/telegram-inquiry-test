@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: telegram-inquiry-test
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_SELLER_CHAT_ID
+        value: "52669824"
